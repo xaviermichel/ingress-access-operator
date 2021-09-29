@@ -1,0 +1,27 @@
+tasks:
+- init: |
+    ./gradlew package
+    # prepare testing environemnent
+    cd scripts
+    make local-prepare
+    cd -
+  command: ./gradlew bootRun
+
+github:
+  prebuilds:
+    feat/gitpod: true
+
+image:
+  file: .gitpod.Dockerfile
+
+ports:
+- port: 8081
+  onOpen: open-preview
+
+vscode:
+  extensions:
+    - redhat.java
+    - vscjava.vscode-java-debug
+    - vscjava.vscode-java-test
+    - pivotal.vscode-spring-boot
+
