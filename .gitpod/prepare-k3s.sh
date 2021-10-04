@@ -11,7 +11,7 @@ fi
 cd $script_dirname
 
 function waitssh() {
-  while ! nc -z 127.0.0.1 2222; do
+  while ! nc -z 127.0.0.1 2222; do   
     sleep 0.1
   done
   ./ssh.sh "whoami" &>/dev/null

@@ -10,7 +10,7 @@ tasks:
     sudo chmod +x /usr/bin/kubectl
     .gitpod/prepare-rootfs.sh
   command: |
-    .gitpod/qemu.shasks:
+    .gitpod/qemu.sh
 - init: |
     ./gradlew package
     # prepare testing environemnent
