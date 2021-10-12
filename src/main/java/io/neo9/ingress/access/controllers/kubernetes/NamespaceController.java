@@ -12,6 +12,7 @@ import io.fabric8.kubernetes.client.Watcher.Action;
 import io.neo9.ingress.access.config.AdditionalWatchersConfig;
 import io.neo9.ingress.access.exceptions.ResourceNotManagedByOperatorException;
 import io.neo9.ingress.access.services.IstioSidecarReconciler;
+import io.neo9.ingress.access.utils.Debouncer;
 import io.neo9.ingress.access.utils.RetryContext;
 import io.neo9.ingress.access.utils.RetryableWatcher;
 import lombok.extern.slf4j.Slf4j;
@@ -32,20 +33,25 @@ public class NamespaceController {
 
 	private final BiFunction<Action, Namespace, Void> onEventReceived;
 
+	private final Debouncer debouncer;
+
 	private Watch namespaceWatchOnLabel;
 
 	public NamespaceController(KubernetesClient kubernetesClient, AdditionalWatchersConfig additionalWatchersConfig, IstioSidecarReconciler istioSidecarReconciler) {
+		this.debouncer = new Debouncer();
 		this.kubernetesClient = kubernetesClient;
 		this.additionalWatchersConfig = additionalWatchersConfig;
 		this.onEventReceived = (action, namespace) -> {
 			log.info("update event detected for namespace : {}", namespace.getMetadata().getName());
-			// always reconcile sidecar config
-			try {
-				istioSidecarReconciler.reconcile();
-			}
-			catch (ResourceNotManagedByOperatorException e) {
-				log.error("panic: could not work on resource {}", e.getResourceNamespaceName(), e);
-			}
+			// always reconcile sidecar config, we same key
+			debouncer.debounce("all-namespaces-debounce", () -> {
+				try {
+					istioSidecarReconciler.reconcile();
+				}
+				catch (ResourceNotManagedByOperatorException e) {
+					log.error("panic: could not work on resource {}", e.getResourceNamespaceName(), e);
+				}
+			});
 			return null;
 		};
 	}
@@ -53,7 +59,6 @@ public class NamespaceController {
 	@PostConstruct
 	public void startWatch() {
 		if (additionalWatchersConfig.updateIstioIngressSidecar().isEnabled()) {
-			log.info("starting watch loop on namespaces");
 			watchNamespaces();
 		}
 	}
@@ -61,13 +66,21 @@ public class NamespaceController {
 	@PreDestroy
 	public void stopWatch() {
 		log.info("closing watch loop on namespaces");
+		closeNamespaceWatch();
+		retryContext.shutdown();
+		debouncer.shutdown();
+	}
+
+	private void closeNamespaceWatch() {
 		if (nonNull(namespaceWatchOnLabel)) {
 			namespaceWatchOnLabel.close();
+			namespaceWatchOnLabel = null;
 		}
-		retryContext.shutdown();
 	}
 
 	private void watchNamespaces() {
+		closeNamespaceWatch();
+		log.info("starting watch loop on namespaces");
 		namespaceWatchOnLabel = kubernetesClient.namespaces()
 				.watch(new RetryableWatcher<>(
 						retryContext,

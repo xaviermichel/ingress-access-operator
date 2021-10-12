@@ -12,6 +12,7 @@ import io.fabric8.kubernetes.client.Watcher.Action;
 import io.neo9.ingress.access.config.AdditionalWatchersConfig;
 import io.neo9.ingress.access.exceptions.VisitorGroupNotFoundException;
 import io.neo9.ingress.access.services.VisitorGroupIngressReconciler;
+import io.neo9.ingress.access.utils.Debouncer;
 import io.neo9.ingress.access.utils.RetryContext;
 import io.neo9.ingress.access.utils.RetryableWatcher;
 import lombok.extern.slf4j.Slf4j;
@@ -36,11 +37,14 @@ public class IngressController {
 
 	private final BiFunction<Action, Ingress, Void> onEventReceived;
 
+	private final Debouncer debouncer;
+
 	private Watch ingressWatchOnLabel;
 
 	private Watch ingressWatchOnAnnotations;
 
 	public IngressController(KubernetesClient kubernetesClient, VisitorGroupIngressReconciler visitorGroupIngressReconciler, AdditionalWatchersConfig additionalWatchersConfig) {
+		this.debouncer = new Debouncer();
 		this.kubernetesClient = kubernetesClient;
 		this.additionalWatchersConfig = additionalWatchersConfig;
 		this.onEventReceived = (action, ingress) -> {
@@ -49,12 +53,14 @@ public class IngressController {
 				case ADDED:
 				case MODIFIED:
 					log.info("update event detected for ingress : {}", ingressNamespaceAndName);
-					try {
-						visitorGroupIngressReconciler.reconcile(ingress);
-					}
-					catch (VisitorGroupNotFoundException e) {
-						log.error("panic: could not resolve visitorGroup {} for ingress {}", e.getVisitorGroupName(), ingressNamespaceAndName, e);
-					}
+					debouncer.debounce(ingressNamespaceAndName, () -> {
+						try {
+							visitorGroupIngressReconciler.reconcile(ingress);
+						}
+						catch (VisitorGroupNotFoundException e) {
+							log.error("panic: could not resolve visitorGroup {} for ingress {}", e.getVisitorGroupName(), ingressNamespaceAndName, e);
+						}
+					});
 					break;
 				default:
 					// do nothing on ingress deletion
@@ -65,10 +71,8 @@ public class IngressController {
 
 	@PostConstruct
 	public void startWatch() {
-		log.info("starting watch loop on ingress (by label)");
 		watchIngressesOnLabel();
 		if (additionalWatchersConfig.watchIngressAnnotations().isEnabled()) {
-			log.info("starting watch loop on ingress (by annotations)");
 			watchIngressesOnAnnotation();
 		}
 	}
@@ -76,16 +80,29 @@ public class IngressController {
 	@PreDestroy
 	public void stopWatch() {
 		log.info("closing watch loop on ingress");
+		closeIngressWatchOnLabel();
+		closeIngressWatchOnAnnotations();
+		retryContext.shutdown();
+		debouncer.shutdown();
+	}
+
+	private void closeIngressWatchOnLabel() {
 		if (nonNull(ingressWatchOnLabel)) {
 			ingressWatchOnLabel.close();
+			ingressWatchOnLabel = null;
 		}
+	}
+
+	private void closeIngressWatchOnAnnotations() {
 		if (nonNull(ingressWatchOnAnnotations)) {
 			ingressWatchOnAnnotations.close();
+			ingressWatchOnAnnotations = null;
 		}
-		retryContext.shutdown();
 	}
 
 	private void watchIngressesOnLabel() {
+		closeIngressWatchOnLabel();
+		log.info("starting watch loop on ingress (by label)");
 		ingressWatchOnLabel = kubernetesClient.network().v1().ingresses()
 				.inAnyNamespace()
 				.withLabel(MUTABLE_LABEL_KEY, MUTABLE_LABEL_VALUE)
@@ -99,6 +116,8 @@ public class IngressController {
 	}
 
 	private void watchIngressesOnAnnotation() {
+		closeIngressWatchOnAnnotations();
+		log.info("starting watch loop on ingress (by annotations)");
 		ingressWatchOnAnnotations = kubernetesClient.network().v1().ingresses()
 				.inAnyNamespace()
 				.withoutLabel(MUTABLE_LABEL_KEY, MUTABLE_LABEL_VALUE) // exclude because already retrieved by previous watcher

@@ -36,14 +36,14 @@ import static java.util.Objects.nonNull;
 
 @org.springframework.stereotype.Service
 @Slf4j
-public class ServiceReconciler {
+public class ServiceExposerReconciler {
 
 
 	private final IngressRepository ingressRepository;
 
 	private final AdditionalWatchersConfig additionalWatchersConfig;
 
-	public ServiceReconciler(IngressRepository ingressRepository, AdditionalWatchersConfig additionalWatchersConfig) {
+	public ServiceExposerReconciler(IngressRepository ingressRepository, AdditionalWatchersConfig additionalWatchersConfig) {
 		this.ingressRepository = ingressRepository;
 		this.additionalWatchersConfig = additionalWatchersConfig;
 	}
