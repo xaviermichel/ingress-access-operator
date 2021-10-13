@@ -63,6 +63,7 @@ public class IngressController {
 					break;
 				default:
 					// do nothing on ingress deletion
+					break;
 			}
 			return null;
 		};

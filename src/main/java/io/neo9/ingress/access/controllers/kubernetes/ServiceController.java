@@ -42,6 +42,7 @@ public class ServiceController {
 		this.kubernetesClient = kubernetesClient;
 		this.onEventReceived = (action, service) -> {
 			String serviceNamespaceAndName = getResourceNamespaceAndName(service);
+			log.trace("start process event on {}", serviceNamespaceAndName);
 			switch (action) {
 				case ADDED:
 				case MODIFIED:
@@ -74,7 +75,9 @@ public class ServiceController {
 					break;
 				default:
 					// do nothing on error
+					break;
 			}
+			log.trace("end of process event on {}", serviceNamespaceAndName);
 			return null;
 		};
 	}
