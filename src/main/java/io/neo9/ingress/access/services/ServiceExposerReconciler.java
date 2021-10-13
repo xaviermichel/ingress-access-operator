@@ -118,7 +118,7 @@ public class ServiceExposerReconciler {
 			throw new ResourceNotManagedByOperatorException(getResourceNamespaceAndName(oldIngress));
 		}
 		if (nonNull(oldIngress)) {
-			log.info("Deleting ingress {} due to service deletion {}", getResourceNamespaceAndName(oldIngress), serviceNamespaceAndName);
+			log.info("deleting ingress {} due to service deletion {}", getResourceNamespaceAndName(oldIngress), serviceNamespaceAndName);
 			ingressRepository.delete(oldIngress.getMetadata().getNamespace(), oldIngress.getMetadata().getName());
 		}
 		log.trace("end of working with deleted service {}", serviceNamespaceAndName);
