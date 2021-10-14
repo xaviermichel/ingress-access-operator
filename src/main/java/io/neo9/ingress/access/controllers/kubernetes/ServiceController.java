@@ -20,7 +20,6 @@ import org.springframework.stereotype.Component;
 
 import static io.neo9.ingress.access.config.MutationLabels.EXPOSE_LABEL_KEY;
 import static io.neo9.ingress.access.config.MutationLabels.EXPOSE_LABEL_VALUE;
-import static io.neo9.ingress.access.utils.KubernetesUtils.getLabelValue;
 import static io.neo9.ingress.access.utils.KubernetesUtils.getResourceNamespaceAndName;
 import static java.util.Objects.nonNull;
 
@@ -46,16 +45,10 @@ public class ServiceController {
 			switch (action) {
 				case ADDED:
 				case MODIFIED:
-					boolean isToExpose = EXPOSE_LABEL_VALUE.equalsIgnoreCase(getLabelValue(EXPOSE_LABEL_KEY, service));
-					log.info("update event detected for service : {} (isToExpose = {})", serviceNamespaceAndName, isToExpose);
-
+					log.info("update event detected for service : {}", serviceNamespaceAndName);
 					debouncer.debounce(serviceNamespaceAndName, () -> {
 						try {
-							if (isToExpose) {
-								serviceExposerReconciler.reconcile(service);
-							} else {
-								serviceExposerReconciler.reconcileOnDelete(service);
-							}
+							serviceExposerReconciler.reconcile(service);
 						}
 						catch (ResourceNotManagedByOperatorException e) {
 							log.error("panic: could not work on resource {}", e.getResourceNamespaceName(), e);
@@ -107,7 +100,7 @@ public class ServiceController {
 		log.info("starting watch loop on service (by label)");
 		serviceWatchOnLabel = kubernetesClient.services()
 				.inAnyNamespace()
-				.withLabel(EXPOSE_LABEL_KEY)
+				.withLabel(EXPOSE_LABEL_KEY, EXPOSE_LABEL_VALUE)
 				.watch(new RetryableWatcher<>(
 						retryContext,
 						String.format("%s-onLabel", Service.class.getSimpleName()),
