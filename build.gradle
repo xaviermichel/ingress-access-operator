@@ -3,7 +3,7 @@ plugins {
 	id 'checkstyle'
 	id 'org.springframework.boot' version '3.0.5'
 	id 'io.spring.dependency-management' version '1.1.0'
-	id 'org.graalvm.buildtools.native' version '0.9.20' apply false
+	id 'org.graalvm.buildtools.native' version '0.9.21' apply false
 	id "org.sonarqube" version "4.0.0.2929"
 	id 'pl.allegro.tech.build.axion-release' version '1.15.0'
 }
