@@ -26,7 +26,7 @@ ext {
 	javaOperatorVersion = '4.3.1'
 	javaOperatorStarterVersion = '5.0.0'
 	bouncycastleVersion = '1.70'
-	awsSdkVersion = '2.21.35'
+	awsSdkVersion = '2.21.40'
 
 	buildNativeImage = ! "false".equalsIgnoreCase(System.getenv('NATIVE_IMAGE'))
 }
