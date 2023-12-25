@@ -35,7 +35,7 @@ repositories {
 
 ext {
     javaOperatorVersion = '4.6.1'
-    javaOperatorStarterVersion = '5.4.0'
+    javaOperatorStarterVersion = '5.4.1'
     bouncycastleVersion = '1.70'
     awsSdkVersion = '2.21.35'
 
