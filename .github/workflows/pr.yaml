@@ -39,7 +39,7 @@ jobs:
         uses: ishworkh/docker-image-artifact-download@v1
         with:
           image: "docker.io/neo9sas/ingress-access-operator:latest"
-      - uses: jupyterhub/action-k3s-helm@v3
+      - uses: jupyterhub/action-k3s-helm@v4
         id: k3s
         with:
           k3s-version: ${{ matrix.k8s_version }}
@@ -109,7 +109,7 @@ jobs:
         uses: ishworkh/docker-image-artifact-download@v1
         with:
           image: "docker.io/neo9sas/ingress-access-operator:latest"
-      - uses: jupyterhub/action-k3s-helm@v3
+      - uses: jupyterhub/action-k3s-helm@v4
         id: k3s
         with:
           k3s-version: ${{ matrix.k8s_version }}
