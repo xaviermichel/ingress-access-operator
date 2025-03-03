@@ -60,6 +60,7 @@ dependencies {
 
     implementation "software.amazon.awssdk:sts:${awsSdkVersion}"
     implementation "software.amazon.awssdk:acm:${awsSdkVersion}"
+    implementation "software.amazon.awssdk:ec2:${awsSdkVersion}"
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor "io.javaoperatorsdk:operator-framework:${javaOperatorVersion}"

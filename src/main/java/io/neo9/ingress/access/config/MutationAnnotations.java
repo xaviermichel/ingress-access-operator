@@ -31,4 +31,8 @@ public class MutationAnnotations {
 
 	public static final String OPERATOR_AWS_ALB_CERT_ARN = "alb.ingress.kubernetes.io/certificate-arn";
 
+	public static final String OPERATOR_AWS_SG = "ingress.neo9.io/aws-load-balancer-security-groups";
+
+	public static final String OPERATOR_AWS_SERVICE_SG = "service.beta.kubernetes.io/aws-load-balancer-security-groups";
+
 }

@@ -1,19 +1,5 @@
 package io.neo9.ingress.access.services;
 
-import static io.neo9.ingress.access.config.MutationAnnotations.*;
-import static io.neo9.ingress.access.config.MutationLabels.MANAGED_BY_OPERATOR_VALUE;
-import static io.neo9.ingress.access.config.MutationLabels.MUTABLE_LABEL_KEY;
-import static io.neo9.ingress.access.config.MutationLabels.MUTABLE_LABEL_VALUE;
-import static io.neo9.ingress.access.config.MutationLabels.VISITOR_GROUP_LABEL_CATEGORY;
-import static io.neo9.ingress.access.utils.common.KubernetesUtils.getAnnotationValue;
-import static io.neo9.ingress.access.utils.common.KubernetesUtils.getResourceNamespaceAndName;
-import static io.neo9.ingress.access.utils.common.KubernetesUtils.hasAnnotation;
-import static io.neo9.ingress.access.utils.common.KubernetesUtils.hasLabel;
-import static io.neo9.ingress.access.utils.common.StringUtils.COMMA;
-import static io.neo9.ingress.access.utils.common.StringUtils.EMPTY;
-import static java.util.Arrays.stream;
-import static org.apache.commons.lang3.StringUtils.isEmpty;
-
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.networking.v1.Ingress;
 import io.neo9.ingress.access.config.AdditionalWatchersConfig;
@@ -25,13 +11,6 @@ import io.neo9.ingress.access.exceptions.VisitorGroupNotFoundException;
 import io.neo9.ingress.access.repositories.IngressRepository;
 import io.neo9.ingress.access.repositories.ServiceRepository;
 import io.neo9.ingress.access.repositories.VisitorGroupRepository;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -40,6 +19,22 @@ import software.amazon.awssdk.services.acm.model.CertificateStatus;
 import software.amazon.awssdk.services.acm.model.CertificateSummary;
 import software.amazon.awssdk.services.acm.model.ListCertificatesRequest;
 import software.amazon.awssdk.services.acm.model.ListCertificatesResponse;
+import software.amazon.awssdk.services.ec2.Ec2Client;
+import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsRequest;
+import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsResponse;
+import software.amazon.awssdk.services.ec2.model.Filter;
+import software.amazon.awssdk.services.ec2.model.SecurityGroup;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static io.neo9.ingress.access.config.MutationAnnotations.*;
+import static io.neo9.ingress.access.config.MutationLabels.*;
+import static io.neo9.ingress.access.utils.common.KubernetesUtils.*;
+import static io.neo9.ingress.access.utils.common.StringUtils.COMMA;
+import static io.neo9.ingress.access.utils.common.StringUtils.EMPTY;
+import static java.util.Arrays.stream;
+import static org.apache.commons.lang3.StringUtils.isEmpty;
 
 @Service
 @Slf4j
@@ -55,6 +50,10 @@ public class VisitorGroupIngressReconciler {
 
 	private final AdditionalWatchersConfig additionalWatchersConfig;
 
+	private final AcmClient acmClient;
+
+	private final Ec2Client ec2Client;
+
 	public VisitorGroupIngressReconciler(VisitorGroupRepository visitorGroupRepository,
 			IngressRepository ingressRepository, ServiceRepository serviceRepository,
 			AdditionalWatchersConfig additionalWatchersConfig) {
@@ -62,6 +61,8 @@ public class VisitorGroupIngressReconciler {
 		this.ingressRepository = ingressRepository;
 		this.serviceRepository = serviceRepository;
 		this.additionalWatchersConfig = additionalWatchersConfig;
+		this.acmClient = AcmClient.create();
+		this.ec2Client = Ec2Client.create();
 	}
 
 	private void reconcileIfLinkedToVisitorGroup(HasMetadata hasMetadata, String visitorGroupName) {
@@ -120,6 +121,7 @@ public class VisitorGroupIngressReconciler {
 		log.trace("start patching of {}", resourceNamespaceAndName);
 
 		// 1. reconcile ssl certificate
+
 		if (hasAnnotation(ingress, OPERATOR_AWS_ACM_CERT_DOMAIN)) {
 			CertificateSummary certificateSummary = getAcmCertificate(ingress);
 			String currentValue = getAnnotationValue(ingress, OPERATOR_AWS_ALB_CERT_ARN);
@@ -183,11 +185,34 @@ public class VisitorGroupIngressReconciler {
 		log.trace("end of patching of {}", resourceNamespaceAndName);
 	}
 
+	private List<String> getSecurityGroupsIds(HasMetadata hasMetadata) {
+		List<String> securityGroupNames = stream(getAnnotationValue(hasMetadata, OPERATOR_AWS_SG).split(COMMA))
+			.map(String::trim)
+			.filter(StringUtils::isNotBlank)
+			.distinct()
+			.collect(Collectors.toList());
+
+		List<String> securityGroupIds = new ArrayList<>();
+
+		for (String securityGroupName : securityGroupNames) {
+			Filter filter = Filter.builder().name("group-name").values(securityGroupName).build();
+			DescribeSecurityGroupsRequest request = DescribeSecurityGroupsRequest.builder().filters(filter).build();
+			DescribeSecurityGroupsResponse response = ec2Client.describeSecurityGroups(request);
+			List<SecurityGroup> securityGroups = response.securityGroups();
+			if (!securityGroups.isEmpty()) {
+				securityGroupIds.addAll(securityGroups.stream().map(SecurityGroup::groupId).toList());
+			}
+			else {
+				log.error("failed to find security group with name {}", securityGroupName);
+			}
+		}
+
+		return securityGroupIds;
+	}
+
 	private CertificateSummary getAcmCertificate(Ingress ingress) {
 		String resourceNamespaceAndName = getResourceNamespaceAndName(ingress);
 		String domainName = getAnnotationValue(ingress, OPERATOR_AWS_ACM_CERT_DOMAIN);
-
-		AcmClient client = AcmClient.create();
 
 		ListCertificatesRequest req = ListCertificatesRequest.builder()
 			.certificateStatuses(CertificateStatus.ISSUED)
@@ -197,7 +222,7 @@ public class VisitorGroupIngressReconciler {
 		// Retrieve the list of certificates.
 		ListCertificatesResponse result = null;
 		try {
-			result = client.listCertificates(req);
+			result = acmClient.listCertificates(req);
 		}
 		catch (Exception e) {
 			log.error("could not list acm certificates, wont make any change", e);
@@ -247,10 +272,29 @@ public class VisitorGroupIngressReconciler {
 		String resourceNamespaceAndName = getResourceNamespaceAndName(service);
 		log.trace("start patching of {}", resourceNamespaceAndName);
 
-		List<String> cidrList = getCidrList(service);
-		if (!cidrList.equals(service.getSpec().getLoadBalancerSourceRanges())) {
-			log.info("updating service {} because the access whitelist value changed", resourceNamespaceAndName);
-			serviceRepository.patchLoadBalancerSourceRanges(service, cidrList);
+		if (hasAnnotation(service, MUTABLE_INGRESS_VISITOR_GROUP_KEY)) {
+			List<String> cidrList = getCidrList(service);
+			if (!cidrList.equals(service.getSpec().getLoadBalancerSourceRanges())) {
+				log.info("updating service {} because the access whitelist value changed", resourceNamespaceAndName);
+				serviceRepository.patchLoadBalancerSourceRanges(service, cidrList);
+			}
+		}
+
+		if (hasAnnotation(service, OPERATOR_AWS_SG)) {
+			String securityGroupsIds = String.join(",", getSecurityGroupsIds(service));
+			String currentValue = getAnnotationValue(service, OPERATOR_AWS_SERVICE_SG);
+
+			if (securityGroupsIds.isEmpty()) {
+				serviceRepository.removeAnnotation(service, OPERATOR_AWS_SERVICE_SG);
+			}
+			else {
+				boolean valueChanged = !securityGroupsIds.equals(currentValue);
+				if (valueChanged) {
+					log.info("updating service {} with securitygroup ({}) because value changed",
+							resourceNamespaceAndName, securityGroupsIds);
+					serviceRepository.patchWithAnnotations(service, Map.of(OPERATOR_AWS_SERVICE_SG, securityGroupsIds));
+				}
+			}
 		}
 
 		log.trace("end of patching of {}", resourceNamespaceAndName);
