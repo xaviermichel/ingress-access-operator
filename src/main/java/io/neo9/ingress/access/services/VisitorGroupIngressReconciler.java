@@ -231,6 +231,7 @@ public class VisitorGroupIngressReconciler {
 		Optional<CertificateSummary> certificateSummaryOpt = result.certificateSummaryList()
 			.stream()
 			.filter(c -> c.domainName().equals(domainName))
+			.sorted(Comparator.comparing(CertificateSummary::issuedAt).reversed())
 			.findFirst();
 
 		if (certificateSummaryOpt.isEmpty()) {
